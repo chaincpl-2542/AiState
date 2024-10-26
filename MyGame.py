@@ -6,7 +6,11 @@ from enum import Enum
 
 WIDTH, HEIGHT = 800, 600
 NUM_AGENTS = 1
-FISH_SIZE = 5
+VISION_RANGE = 100
+HUNGER = 100
+HUNGER_DRAIN_RATE = 6
+POWER = 100
+POWER_DRAIN_RATE = 4
 FOOD_SIZE = 3
 MAX_SPEED = 2
 
@@ -33,9 +37,13 @@ FRAME_RATE = 0.4
 
 # States------------
 class AgentState(Enum):
-    PATROL_STATE = 0
+    WANDERING_STATE = 0
     CHASE_STATE = 1
-    ATK_STATE = 2
+    WALK_TO_FOOD_STATE = 2
+    WALK_TO_HOME_STATE = 3
+    ATK_STATE = 4
+    EAT_STATE = 5
+    SLEEP_STATE = 6
 #---------------------
 
 class Agent:
@@ -44,13 +52,21 @@ class Agent:
         self.velocity = pygame.Vector2(random.uniform(-1, 1), random.uniform(-1, 1)).normalize() * MAX_SPEED
         self.frame_index = 0
         
-        self.current_state = AgentState.PATROL_STATE
+        self.power = POWER
+        self.hunger = HUNGER
+        
+        self.current_state = AgentState.WANDERING_STATE
         self.current_animation = orc_walk_animation
 
-    def update(self, target):
-
+    def update(self, target, food, home, time_detaTime):
+        if self.current_state != AgentState.EAT_STATE and self.current_state != AgentState.SLEEP_STATE:
+            self.hunger -= HUNGER_DRAIN_RATE * time_detaTime
+            self.power -= POWER_DRAIN_RATE * time_detaTime
+         
+        print("State > " + str(self.current_state) + " : " + "Hunger > " + str(round(self.hunger)) + " : " + "Power > " + str(round(self.power)))
+        
         a = pygame.Vector2(0,0)
-        if self.current_state == AgentState.PATROL_STATE:
+        if self.current_state == AgentState.WANDERING_STATE:
             self.velocity.x = random.randint(0, 600)
             self.velocity.y = random.randint(0, 600)
             if self.velocity.length() > MAX_SPEED:
@@ -59,8 +75,13 @@ class Agent:
 
             # transition that could change to other stages
             dist = (target - self.position).length()
-            if dist < 100:
-                self.current_state = AgentState.CHASE_STATE
+            if(self.power > 50 and self.hunger > 50):
+                if dist < VISION_RANGE:
+                    self.current_state = AgentState.CHASE_STATE
+            elif(self.hunger < 50):
+                self.current_state = AgentState.WALK_TO_FOOD_STATE
+            elif(self.power < 50):
+                self.current_state = AgentState.WALK_TO_HOME_STATE
 
         elif self.current_state == AgentState.CHASE_STATE:
             a = (target - self.position).normalize() * 5
@@ -72,7 +93,7 @@ class Agent:
             # transition that could change to other stages
             dist = (target - self.position).length()
             if dist >= 100:
-                self.current_state = AgentState.PATROL_STATE
+                self.current_state = AgentState.WANDERING_STATE
             if dist <= 10:
                 self.current_state = AgentState.ATK_STATE
 
@@ -83,9 +104,45 @@ class Agent:
             dist = (target - self.position).length()
             if dist > 10:
                 self.current_state = AgentState.CHASE_STATE
+          
+        elif self.current_state == AgentState.WALK_TO_FOOD_STATE:
+            a = (food - self.position).normalize() * 5
+            self.velocity += a
+            if self.velocity.length() > MAX_SPEED:
+                self.velocity.scale_to_length(MAX_SPEED)
+            self.position += self.velocity
 
+            # transition that could change to other stages
+            dist = (food - self.position).length()
+            if dist <= 10:
+                self.current_state = AgentState.EAT_STATE
+                
+        elif self.current_state == AgentState.EAT_STATE:
+            self.velocity *= 0
+            self.hunger += HUNGER_DRAIN_RATE * 5 * time_detaTime
+            
+            if self.hunger >= 100:
+                self.current_state = AgentState.WANDERING_STATE
+        
+        elif self.current_state == AgentState.WALK_TO_HOME_STATE:
+            a = (home - self.position).normalize() * 5
+            self.velocity += a
+            if self.velocity.length() > MAX_SPEED:
+                self.velocity.scale_to_length(MAX_SPEED)
+            self.position += self.velocity
 
-
+            # transition that could change to other stages
+            dist = (home - self.position).length()
+            if dist <= 3:
+                self.current_state = AgentState.SLEEP_STATE  
+        
+        elif self.current_state == AgentState.SLEEP_STATE:
+            self.velocity *= 0
+            self.power += POWER_DRAIN_RATE * 5 * time_detaTime
+            
+            if self.power >= 100:
+                self.current_state = AgentState.WANDERING_STATE
+                
         a *= 0 # clear force
 
         # Warp around
@@ -109,7 +166,7 @@ class Agent:
         if self.velocity.x < 0:
             current_frame = pygame.transform.flip(current_frame, True, False)
 
-        if self.current_state == AgentState.PATROL_STATE:
+        if self.current_state == AgentState.WANDERING_STATE:
             pygame.draw.circle(screen, (0,0,255), self.position, 10 )
         elif self.current_state == AgentState.CHASE_STATE:
             pygame.draw.circle(screen, (255, 255, 0 ), self.position, 10)
@@ -139,8 +196,10 @@ def main():
             manager.process_events(event)
 
             target = pygame.Vector2(pygame.mouse.get_pos())
+            food = pygame.Vector2(pygame.mouse.get_pos())
+            home = pygame.Vector2(pygame.mouse.get_pos())
 
-        agents = [fish for fish in agents if fish.update(target)]
+        agents = [moodeng for moodeng in agents if moodeng.update(target,food,home,time_delta)]
         for agent in agents:
             agent.draw(screen)
 

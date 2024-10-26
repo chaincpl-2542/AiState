@@ -1,6 +1,5 @@
 import pygame
 import random
-import pygame_gui
 import math
 from enum import Enum
 from abc import ABC, abstractmethod
@@ -14,13 +13,6 @@ MAX_SPEED = 2
 
 pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-manager = pygame_gui.UIManager((WIDTH, HEIGHT))
-food_rate_slider = pygame_gui.elements.UIHorizontalSlider(
-    relative_rect=pygame.Rect((10, 10), (200, 20)),
-    start_value=500,
-    value_range=(100, 2000),
-    manager=manager
-)
 pygame.display.set_caption("State Machine")
 
 # Load Orc Sprite Sheet
@@ -41,11 +33,13 @@ class AgentState(Enum):
 class StateMachine():
     def __init__(self) -> None:
         self.states = {
-            'patrol': PatrolState(),
+            'Wandering': WanderinglState(),
             'chase': ChaseState(),
-            'attack': AtkState()
+            'attack': AtkState(),
+            'eat':EatState(),
+            'sleep':SleepState()
         }
-        self.curret_state = 'patrol'
+        self.curret_state = 'Wandering'
 
     def update(self, agent, target):
         new_state = self.states[self.curret_state].update(agent, target)
@@ -72,7 +66,7 @@ class State(ABC):
     def exit(self, agent):
         pass
 
-class PatrolState(State):
+class WanderinglState(State):
     def enter(self, agent):
         pass
 
@@ -105,7 +99,7 @@ class ChaseState(State):
         # transition that could change to other stages
         dist = (target - agent.position).length()
         if dist >= 100:
-            return 'patrol'
+            return 'Wandering'
         if dist <= 10:
             return 'attack'
 
@@ -127,6 +121,31 @@ class AtkState(State):
     def exit(self, agent):
         pass
 
+class EatState(State):
+    def enter(self, agent):
+        agent.velocity *= 0
+
+    def update(self, agent, target):
+        
+        dist = (target - agent.position).length()
+        if dist > 10:
+            return 'chase'
+
+    def exit(self, agent):
+        pass
+    
+class SleepState(State):
+    def enter(self, agent):
+        agent.velocity *= 0
+
+    def update(self, agent, target):
+        
+        dist = (target - agent.position).length()
+        if dist > 10:
+            return 'chase'
+
+    def exit(self, agent):
+        pass
 
 class Agent:
     def __init__(self):
@@ -163,7 +182,7 @@ class Agent:
         if self.velocity.x < 0:
             current_frame = pygame.transform.flip(current_frame, True, False)
 
-        if self.state_machine.curret_state == 'patrol':
+        if self.state_machine.curret_state == 'Wandering':
             pygame.draw.circle(screen, (0,0,255), self.position, 10 )
         elif self.state_machine.curret_state == 'chase':
             pygame.draw.circle(screen, (255, 255, 0 ), self.position, 10)
@@ -185,12 +204,10 @@ def main():
     while running:
         time_delta = clock.tick(60) / 1000.0
         screen.fill((100, 100, 100))
-        manager.update(time_delta)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            manager.process_events(event)
 
             target = pygame.Vector2(pygame.mouse.get_pos())
 
@@ -200,7 +217,6 @@ def main():
 
         pygame.draw.circle(screen, (255, 0, 0), (int(target.x), int(target.y)), FOOD_SIZE)
 
-        manager.draw_ui(screen)
         pygame.display.flip()
         clock.tick(60)
 
