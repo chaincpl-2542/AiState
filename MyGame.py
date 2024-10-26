@@ -6,13 +6,14 @@ from enum import Enum
 
 WIDTH, HEIGHT = 800, 600
 NUM_AGENTS = 1
-VISION_RANGE = 100
+VISION_RANGE = 200
+ATTACK_RANGE = 50
 HUNGER = 100
 HUNGER_DRAIN_RATE = 6
 POWER = 100
 POWER_DRAIN_RATE = 4
 FOOD_SIZE = 3
-MAX_SPEED = 2
+MAX_SPEED = 3
 
 
 pygame.init()
@@ -27,10 +28,15 @@ food_rate_slider = pygame_gui.elements.UIHorizontalSlider(
 pygame.display.set_caption("State Machine")
 
 # Load Orc Sprite Sheet
-orc_sprite_sheet = pygame.image.load('./assets/Orc.png').convert_alpha()
-orc_walk_animation = [orc_sprite_sheet.subsurface(pygame.Rect(x * 100, 100, 100, 100)) for x in range(6)]
-orc_attack_animation = [orc_sprite_sheet.subsurface(pygame.Rect(x * 100, 2 * 100, 100, 100)) for x in range(6)]
-orc_frames = orc_walk_animation
+moodeng_sprite_sheet = pygame.image.load('./assets/MoodengSprite.png').convert_alpha()
+banana_sprite = pygame.image.load('./assets/Banana.png').convert_alpha()
+bed_sprite = pygame.image.load('./assets/Bed.png').convert_alpha()
+moodeng_walk_animation = [moodeng_sprite_sheet.subsurface(pygame.Rect(x * 128, 0, 128, 128)) for x in range(2)]
+moodeng_sleep = [moodeng_sprite_sheet.subsurface(pygame.Rect(x * 128, 1 * 128, 128, 128)) for x in range(2)]
+moodeng_attack_animation = [moodeng_sprite_sheet.subsurface(pygame.Rect(x * 128, 2 * 128, 128, 128)) for x in range(5)]
+moodeng_frames = moodeng_walk_animation
+banana_frame = banana_sprite.subsurface(pygame.Rect(0, 0, 80, 80))
+bed_frame = bed_sprite.subsurface(pygame.Rect(0, 0, 192, 192))
 
 # Animation frame rate
 FRAME_RATE = 0.4
@@ -56,7 +62,7 @@ class Agent:
         self.hunger = HUNGER
         
         self.current_state = AgentState.WANDERING_STATE
-        self.current_animation = orc_walk_animation
+        self.current_animation = moodeng_walk_animation
 
     def update(self, target, food, home, time_detaTime):
         if self.current_state != AgentState.EAT_STATE and self.current_state != AgentState.SLEEP_STATE:
@@ -67,6 +73,7 @@ class Agent:
         
         a = pygame.Vector2(0,0)
         if self.current_state == AgentState.WANDERING_STATE:
+            self.current_animation = moodeng_walk_animation
             self.velocity.x = random.randint(0, 600)
             self.velocity.y = random.randint(0, 600)
             if self.velocity.length() > MAX_SPEED:
@@ -84,6 +91,7 @@ class Agent:
                 self.current_state = AgentState.WALK_TO_HOME_STATE
 
         elif self.current_state == AgentState.CHASE_STATE:
+            self.current_animation = moodeng_walk_animation
             a = (target - self.position).normalize() * 5
             self.velocity += a
             if self.velocity.length() > MAX_SPEED:
@@ -92,20 +100,22 @@ class Agent:
 
             # transition that could change to other stages
             dist = (target - self.position).length()
-            if dist >= 100:
+            if dist >= VISION_RANGE:
                 self.current_state = AgentState.WANDERING_STATE
-            if dist <= 10:
+            if dist <= ATTACK_RANGE:
                 self.current_state = AgentState.ATK_STATE
 
         elif self.current_state == AgentState.ATK_STATE:
-            self.velocity *= 0
+            self.current_animation = moodeng_attack_animation
+            #self.velocity *= 0
 
             # transition that could change to other stages
             dist = (target - self.position).length()
-            if dist > 10:
+            if dist > ATTACK_RANGE or HUNGER < 50 or POWER < 50:
                 self.current_state = AgentState.CHASE_STATE
           
         elif self.current_state == AgentState.WALK_TO_FOOD_STATE:
+            self.current_animation = moodeng_walk_animation
             a = (food - self.position).normalize() * 5
             self.velocity += a
             if self.velocity.length() > MAX_SPEED:
@@ -114,17 +124,19 @@ class Agent:
 
             # transition that could change to other stages
             dist = (food - self.position).length()
-            if dist <= 10:
+            if dist <= ATTACK_RANGE:
                 self.current_state = AgentState.EAT_STATE
                 
         elif self.current_state == AgentState.EAT_STATE:
-            self.velocity *= 0
+            self.current_animation = moodeng_attack_animation
+            #self.velocity *= 0
             self.hunger += HUNGER_DRAIN_RATE * 5 * time_detaTime
             
-            if self.hunger >= 100:
+            if self.hunger >= HUNGER:
                 self.current_state = AgentState.WANDERING_STATE
         
         elif self.current_state == AgentState.WALK_TO_HOME_STATE:
+            self.current_animation = moodeng_walk_animation
             a = (home - self.position).normalize() * 5
             self.velocity += a
             if self.velocity.length() > MAX_SPEED:
@@ -137,10 +149,11 @@ class Agent:
                 self.current_state = AgentState.SLEEP_STATE  
         
         elif self.current_state == AgentState.SLEEP_STATE:
-            self.velocity *= 0
+            self.current_animation = moodeng_sleep
+            #self.velocity *= 0
             self.power += POWER_DRAIN_RATE * 5 * time_detaTime
             
-            if self.power >= 100:
+            if self.power >= POWER:
                 self.current_state = AgentState.WANDERING_STATE
                 
         a *= 0 # clear force
@@ -158,23 +171,18 @@ class Agent:
         return True
 
 
-    def draw(self, screen):
+    def draw(self, screen, food_position, bed_position):
         # Update frame index for animation
-        self.frame_index = (self.frame_index + FRAME_RATE) % len(orc_frames)
-        current_frame = orc_frames[ int(self.frame_index) ]
+        self.frame_index = (self.frame_index + FRAME_RATE) % len(self.current_animation)
+        current_frame = self.current_animation[ int(self.frame_index) ]
 
         if self.velocity.x < 0:
             current_frame = pygame.transform.flip(current_frame, True, False)
-
-        if self.current_state == AgentState.WANDERING_STATE:
-            pygame.draw.circle(screen, (0,0,255), self.position, 10 )
-        elif self.current_state == AgentState.CHASE_STATE:
-            pygame.draw.circle(screen, (255, 255, 0 ), self.position, 10)
-        elif self.current_state == AgentState.ATK_STATE:
-            pygame.draw.circle(screen, (255, 0, 0 ), self.position, 10)
         
-        screen.blit(current_frame, (int(self.position.x) - 50, int(self.position.y) - 50))
-
+        screen.blit(banana_frame, food_position - pygame.Vector2(40, 40))
+        screen.blit(bed_frame, bed_position - pygame.Vector2(96, 96))
+        screen.blit(current_frame, (int(self.position.x) - 64, int(self.position.y) - 64))
+        
 
 # ------------------------------------------------------------------------------------------------
 
@@ -196,12 +204,10 @@ def main():
             manager.process_events(event)
 
             target = pygame.Vector2(pygame.mouse.get_pos())
-            food = pygame.Vector2(pygame.mouse.get_pos())
-            home = pygame.Vector2(pygame.mouse.get_pos())
 
-        agents = [moodeng for moodeng in agents if moodeng.update(target,food,home,time_delta)]
+        agents = [moodeng for moodeng in agents if moodeng.update(target,pygame.Vector2(100, 100),pygame.Vector2(400, 100),time_delta)]
         for agent in agents:
-            agent.draw(screen)
+            agent.draw(screen, pygame.Vector2(100, 100), pygame.Vector2(400, 100))
 
         pygame.draw.circle(screen, (255, 0, 0), (int(target.x), int(target.y)), FOOD_SIZE)
 
