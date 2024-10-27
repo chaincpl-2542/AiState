@@ -9,22 +9,16 @@ NUM_AGENTS = 1
 VISION_RANGE = 200
 ATTACK_RANGE = 50
 HUNGER = 100
-HUNGER_DRAIN_RATE = 6
+HUNGER_DRAIN_RATE = 8
 POWER = 100
-POWER_DRAIN_RATE = 4
+POWER_DRAIN_RATE = 5
 FOOD_SIZE = 3
-MAX_SPEED = 3
-
+MAX_SPEED = 4
+FOOD_POSITION = pygame.Vector2(200, 200)
+BED_POSITION = pygame.Vector2(600, 200)
 
 pygame.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-manager = pygame_gui.UIManager((WIDTH, HEIGHT))
-food_rate_slider = pygame_gui.elements.UIHorizontalSlider(
-    relative_rect=pygame.Rect((10, 10), (200, 20)),
-    start_value=500,
-    value_range=(100, 2000),
-    manager=manager
-)
 pygame.display.set_caption("State Machine")
 
 # Load Orc Sprite Sheet
@@ -69,7 +63,13 @@ class Agent:
             self.hunger -= HUNGER_DRAIN_RATE * time_detaTime
             self.power -= POWER_DRAIN_RATE * time_detaTime
          
-        print("State > " + str(self.current_state) + " : " + "Hunger > " + str(round(self.hunger)) + " : " + "Power > " + str(round(self.power)))
+        if self.hunger <= 0:
+            self.hunger = 0
+            
+        if self.power <= 0:
+            self.power = 0
+        
+        print("State > " + str(self.current_state) + " : " + "Hunger = " + str(round(self.hunger)) + " : " + "Power = " + str(round(self.power)))
         
         a = pygame.Vector2(0,0)
         if self.current_state == AgentState.WANDERING_STATE:
@@ -100,10 +100,13 @@ class Agent:
 
             # transition that could change to other stages
             dist = (target - self.position).length()
-            if dist >= VISION_RANGE:
+            if self.hunger > 50 and self.power > 50:
+                if dist >= VISION_RANGE:
+                    self.current_state = AgentState.WANDERING_STATE
+                if dist <= ATTACK_RANGE:
+                    self.current_state = AgentState.ATK_STATE
+            else:
                 self.current_state = AgentState.WANDERING_STATE
-            if dist <= ATTACK_RANGE:
-                self.current_state = AgentState.ATK_STATE
 
         elif self.current_state == AgentState.ATK_STATE:
             self.current_animation = moodeng_attack_animation
@@ -111,8 +114,11 @@ class Agent:
 
             # transition that could change to other stages
             dist = (target - self.position).length()
-            if dist > ATTACK_RANGE or HUNGER < 50 or POWER < 50:
-                self.current_state = AgentState.CHASE_STATE
+            if self.hunger > 50 and self.power > 50:
+                if dist > ATTACK_RANGE:
+                    self.current_state = AgentState.CHASE_STATE
+            else:
+                self.current_state = AgentState.WANDERING_STATE
           
         elif self.current_state == AgentState.WALK_TO_FOOD_STATE:
             self.current_animation = moodeng_walk_animation
@@ -195,23 +201,20 @@ def main():
     running = True
     while running:
         time_delta = clock.tick(60) / 1000.0
-        screen.fill((100, 100, 100))
-        manager.update(time_delta)
+        screen.fill((190, 240, 200))
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-            manager.process_events(event)
 
             target = pygame.Vector2(pygame.mouse.get_pos())
 
-        agents = [moodeng for moodeng in agents if moodeng.update(target,pygame.Vector2(100, 100),pygame.Vector2(400, 100),time_delta)]
+        agents = [moodeng for moodeng in agents if moodeng.update(target,FOOD_POSITION,BED_POSITION,time_delta)]
         for agent in agents:
-            agent.draw(screen, pygame.Vector2(100, 100), pygame.Vector2(400, 100))
+            agent.draw(screen, FOOD_POSITION, BED_POSITION)
 
         pygame.draw.circle(screen, (255, 0, 0), (int(target.x), int(target.y)), FOOD_SIZE)
 
-        manager.draw_ui(screen)
         pygame.display.flip()
         clock.tick(60)
 
